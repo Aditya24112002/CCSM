@@ -10,17 +10,15 @@ class ComplaintData(BaseModel):
     manufacturingDate: str = ""
     expiryDate: str = ""
     quantity: str = ""
-    complaintType: str = ""
+    complaintCategory: str = ""
     complaintDate: str = ""
     description: str = ""
-    severity: str = ""
-    priority: str = ""
 
 
 class RiskAssessment(BaseModel):
-    severity: str = "Major"
-    priority: str = "High"
-    recommendedAction: str = "Route to QA investigation and issue replacement."
+    severity: str = ""
+    suggestedNextAction: str = ""
+    initialRiskAssessment: str = ""
 
 
 class IntakeRequest(BaseModel):
@@ -33,5 +31,19 @@ class IntakeResponse(BaseModel):
     complaint: ComplaintData
     riskAssessment: RiskAssessment
     changedFields: list[str]
+    missingFields: list[str] = Field(default_factory=list)
     sourceFile: str = ""
     mode: str = "demo"
+
+
+class SaveComplaintRequest(BaseModel):
+    complaint: ComplaintData
+    riskAssessment: RiskAssessment
+    originalText: str = ""
+    sourceFile: str = ""
+    mode: str = "demo"
+
+
+class ComplaintRecordResponse(SaveComplaintRequest):
+    id: int
+    createdAt: str

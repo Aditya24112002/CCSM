@@ -20,16 +20,9 @@ export const complaintSections = [
   {
     title: '3. Complaint Details',
     fields: [
-      { name: 'complaintType', label: 'Complaint Type', type: 'select', options: ['Product quality defect', 'Packaging complaint', 'Documentation issue'] },
+      { name: 'complaintCategory', label: 'Complaint Category', type: 'text', readOnly: true, placeholder: 'Awaiting AI classification...' },
       { name: 'complaintDate', label: 'Complaint Date', type: 'date' },
       { name: 'description', label: 'Detailed Complaint Description', type: 'textarea', wide: true }
-    ]
-  },
-  {
-    title: '4. Initial Assessment & Priority',
-    fields: [
-      { name: 'severity', label: 'Initial Severity', type: 'select', placeholder: 'Awaiting AI assessment...', options: ['Minor', 'Major', 'Critical'] },
-      { name: 'priority', label: 'Priority', type: 'select', placeholder: 'Awaiting AI assessment...', options: ['Low', 'Medium', 'High', 'Urgent'] }
     ]
   }
 ];

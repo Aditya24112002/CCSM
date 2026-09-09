@@ -16,6 +16,7 @@ export default [
         document: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
+        FormData: 'readonly',
         setTimeout: 'readonly'
       },
       parserOptions: {

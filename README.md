@@ -6,7 +6,7 @@ AI-assisted customer complaint intake for pharmaceutical API and FDF quality ass
 
 This project is a focused single-page Complaint Management experience. It combines a structured Complaint Log with an AIVOA Copilot that can interpret complaint text, extract complaint data, update the form, and provide an initial risk assessment.
 
-The current release completes the UI milestone and includes a local FastAPI demo endpoint ready for the next backend integration phase.
+The current codebase includes the completed UI milestone, a FastAPI intake endpoint, and an optional LangGraph/Groq extraction path that falls back to deterministic demo extraction when no API key is configured.
 
 ## Core features
 
@@ -23,7 +23,7 @@ The current release completes the UI milestone and includes a local FastAPI demo
 - DD/MM/YYYY date entry and calendar picker controls
 - Form-only reset behavior that preserves conversation history
 - Explicit new-chat confirmation before clearing conversation history
-- FastAPI intake endpoint with a local demo extraction fallback
+- FastAPI intake endpoint with optional LangGraph/Groq extraction and local demo fallback
 
 ## Architecture
 
@@ -39,12 +39,51 @@ src/
 backend/
   app/main.py                 FastAPI application and routes
   app/schemas.py              API request/response models
-  app/services/               Extraction service boundary and demo implementation
+  app/services/               Extraction service boundary, demo, and LangGraph implementations
   requirements.txt            Backend dependencies
   .env.example                Backend configuration template
 ```
 
 The UI is modular so the demo extractor can be replaced by a LangGraph workflow without coupling AI logic to presentation components.
+
+## AI Model Selection
+
+### Original Plan
+
+The project was initially evaluated with the intention of using the following models:
+
+- `gemma2-9b-it`
+- `llama-3.3-70b-versatile`
+
+### Implementation Outcome
+
+During implementation and environment setup, the originally planned models were not available or suitable for the project's deployment environment and access tier. To avoid blocking development and ensure a stable AI integration, the project was migrated to:
+
+`openai/gpt-oss-20b`
+
+### Current AI Model
+
+The Complaint Management Co-Pilot and AI extraction workflows now use:
+
+`openai/gpt-oss-20b`
+
+Reasons:
+
+- Available and supported in the deployment environment.
+- Supports long-context processing with a 131K context window.
+- Supports tool usage and agentic workflows.
+- Supports structured outputs and function calling.
+- Suitable for document analysis and complaint data extraction workflows.
+
+### Future Flexibility
+
+The system has been designed to remain model-agnostic wherever possible. Future upgrades or migrations to newer supported models should require configuration changes rather than major architectural changes.
+
+### Important Note
+
+- `gemma2-9b-it` is not the active model.
+- `llama-3.3-70b-versatile` is not the active model.
+- `openai/gpt-oss-20b` is the current production model used by the project.
 
 ## Prerequisites
 
@@ -95,6 +134,7 @@ For real Groq/LangGraph processing, set:
 
 ```env
 GROQ_API_KEY=your_groq_key
+GROQ_MODEL=openai/gpt-oss-20b
 DATABASE_URL=postgresql+psycopg://ccms:ccms@localhost:5432/ccms
 CORS_ORIGINS=http://localhost:5173
 ```
@@ -127,13 +167,12 @@ Completed:
 - Single-page Complaint Log UI
 - Responsive AIVOA Copilot experience
 - Redux complaint state
-- Demo FastAPI intake endpoint
+- FastAPI intake endpoint
+- Optional LangGraph/Groq extraction path
 - Modular frontend and backend boundaries
 
 Next:
 
-- Connect LangGraph orchestration
-- Add real Groq extraction and risk assessment
 - Add document parsing service
 - Persist complaints in PostgreSQL
 - Add complaint history and audit events

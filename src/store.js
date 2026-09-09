@@ -9,11 +9,9 @@ export const initialComplaint = {
   manufacturingDate: '',
   expiryDate: '',
   quantity: '',
-  complaintType: '',
+  complaintCategory: '',
   complaintDate: '',
   description: '',
-  severity: '',
-  priority: ''
 };
 
 const complaintSlice = createSlice({

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Check,
@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import { resetComplaint, updateComplaint } from './store';
 import ComplaintForm from './components/complaint/ComplaintForm';
+import AiAssessment from './components/complaint/AiAssessment';
 import { complaintSections } from './features/complaint/complaintConfig';
-import { intakeComplaint } from './services/complaintApi';
+import { getApiHealth, intakeComplaint, intakeComplaintFile, saveComplaint } from './services/complaintApi';
 
 const sampleComplaint = {
   source: 'Pharmacy',
@@ -27,12 +28,35 @@ const sampleComplaint = {
   manufacturingDate: '01/03/2026',
   expiryDate: '28/02/2028',
   quantity: '12 capsules',
-  complaintType: 'Product quality defect',
+  complaintCategory: 'Product Quality Issue',
   complaintDate: '18/06/2026',
-  description: 'Customer reported discolored capsules in a pack of Amoxicillin Capsules 500 mg.',
-  severity: 'Major',
-  priority: 'High'
+  description: 'Customer reported discolored capsules in a pack of Amoxicillin Capsules 500 mg.'
 };
+
+const emptyAssessment = {
+  severity: '',
+  suggestedNextAction: '',
+  initialRiskAssessment: ''
+};
+
+const demoAssessment = {
+  severity: 'Major',
+  suggestedNextAction: 'Initiate Quality Investigation and perform batch review.',
+  initialRiskAssessment: 'Potential product quality concern identified. Review the affected complaint details and batch.'
+};
+
+function getFallbackAssessment(text) {
+  if (!/product|batch|defect|discolor|damaged|broken|leak|quality/i.test(text)) {
+    return {
+      severity: 'Minor',
+      suggestedNextAction: 'Request additional complaint details before further assessment.',
+      initialRiskAssessment: 'Limited information was provided. Clarify the complaint before determining broader product or batch impact.'
+    };
+  }
+  return demoAssessment;
+}
+
+const fieldLabels = Object.fromEntries(complaintSections.flatMap((section) => section.fields.map((field) => [field.name, field.label])));
 
 function App() {
   const dispatch = useDispatch();
@@ -44,6 +68,11 @@ function App() {
   const [highlightedFields, setHighlightedFields] = useState([]);
   const [sourceFile, setSourceFile] = useState('');
   const [uploadState, setUploadState] = useState('idle');
+  const [missingFields, setMissingFields] = useState([]);
+  const [aiMode, setAiMode] = useState('demo');
+  const [extractionState, setExtractionState] = useState('idle');
+  const [assessment, setAssessment] = useState(emptyAssessment);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = React.useRef(null);
   const isStarted = Boolean(messages.length);
 
@@ -51,12 +80,38 @@ function App() {
     window.localStorage.setItem('aivoa-copilot-open', String(copilotOpen));
   }, [copilotOpen]);
 
-  const completion = useMemo(() => {
-    const fields = Object.values(complaint);
-    return Math.round((fields.filter(Boolean).length / fields.length) * 100);
-  }, [complaint]);
+  useEffect(() => {
+    getApiHealth().then((health) => {
+      // A configured key is not enough to claim Live mode. A successful
+      // extraction response below is what promotes the indicator to green.
+      if (health.mode !== 'langgraph-groq') setAiMode('demo');
+    }).catch(() => setAiMode('demo'));
+  }, []);
 
   const updateField = (field, value) => dispatch(updateComplaint({ [field]: value }));
+
+  const handleSaveComplaint = async () => {
+    if (extractionState !== 'complete') {
+      setStatus('Complete an extraction first');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await saveComplaint({
+        complaint,
+        riskAssessment: assessment,
+        originalText: messages.filter((item) => item.role === 'user').map((item) => item.text).join('\n\n'),
+        sourceFile,
+        mode: aiMode === 'live' ? 'langgraph-groq' : 'demo'
+      });
+      setStatus('Saved to Local QMS');
+    } catch (error) {
+      console.warn('Complaint save failed.', error);
+      setStatus('Save Failed');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const markAiFields = (fields) => {
     setHighlightedFields(fields);
@@ -69,6 +124,7 @@ function App() {
     const extractionSource = extraction.sourceFile || sourceFile;
     if (extraction.sourceFile) setSourceFile(extraction.sourceFile);
     if (extractionSource) setUploadState('processing');
+    setExtractionState('processing');
     setMessages((current) => [...current, { role: 'user', text: trimmed }]);
     setMessage('');
     try {
@@ -83,26 +139,31 @@ function App() {
         : Object.keys(extractedComplaint).filter((field) => extractedComplaint[field]);
       dispatch(updateComplaint(extractedComplaint));
       markAiFields(changedFields);
+      setMissingFields(result.missingFields || Object.keys(extractedComplaint).filter((field) => !extractedComplaint[field]));
+      setExtractionState('complete');
+      setAssessment(result.riskAssessment || emptyAssessment);
+      setAiMode(result.mode === 'langgraph-groq' ? 'live' : 'demo');
       setStatus('Ready to Review');
       if (extractionSource) setUploadState('success');
       setMessages((current) => [...current, {
         role: 'assistant',
         text: result.mode === 'demo'
-          ? 'Complaint parsed successfully through the local FastAPI demo service. I extracted the product details and generated an initial risk assessment.'
-          : 'Complaint parsed successfully. I extracted the product details and generated an initial risk assessment.',
+            ? 'Extraction completed in Demo mode. I populated the fields I could identify and generated an initial risk assessment.'
+            : 'Extraction completed with the live AI service. I populated the complaint fields and generated an initial risk assessment.',
         sourceFile: result.sourceFile || extractionSource
       }]);
       return;
     } catch (error) {
       console.warn('FastAPI intake unavailable; using local demo fallback.', error);
+      setAiMode('demo');
     }
 
     window.setTimeout(() => {
       const lower = trimmed.toLowerCase();
-      const isEdit = lower.includes('batch') || lower.includes('quantity') || lower.includes('update');
+      const isEdit = /\b(?:sorry|actually|update|updated|correct|change|replace)\b/i.test(lower);
       if (isEdit) {
         const patch = {};
-        const batchMatch = trimmed.match(/batch(?: number)?\s*(?:is|:)?\s*([A-Z0-9-]+)/i);
+        const batchMatch = trimmed.match(/batch(?: number)?\s*(?:is|:)?\s*([\w-]+)/i);
         const quantityMatch = trimmed.match(/(?:quantity|affected quantity)\s*(?:is|:)?\s*([\w ]+)/i);
         if (batchMatch) patch.batchNumber = batchMatch[1];
         if (quantityMatch) patch.quantity = quantityMatch[1].replace(/[.]+$/, '').trim();
@@ -110,11 +171,15 @@ function App() {
           dispatch(updateComplaint(patch));
           markAiFields(Object.keys(patch));
         }
+        setMissingFields(Object.keys(complaint).filter((field) => !complaint[field] && !patch[field]));
       } else {
         dispatch(updateComplaint(sampleComplaint));
         markAiFields(Object.keys(sampleComplaint));
+        setMissingFields(Object.keys(sampleComplaint).filter((field) => !sampleComplaint[field]));
       }
+      setAssessment(getFallbackAssessment(trimmed));
       setStatus('Ready to Review');
+      setExtractionState('complete');
       if (extractionSource) setUploadState('success');
       setMessages((current) => [...current, {
         role: 'assistant',
@@ -124,10 +189,31 @@ function App() {
     }, 500);
   };
 
-  const handleFileUpload = (file) => {
+  const handleFileUpload = async (file) => {
     if (!file) return;
     setUploadState('processing');
-    submitMessage(`Extract complaint details from "${file.name}"`, { sourceFile: file.name });
+    setSourceFile(file.name);
+    setMessages((current) => [...current, { role: 'user', text: `Extract complaint details from "${file.name}"`, sourceFile: file.name }]);
+    try {
+      const result = await intakeComplaintFile(file, complaint);
+      dispatch(updateComplaint(result.complaint || {}));
+      markAiFields(result.changedFields || Object.keys(result.complaint || {}));
+      setMissingFields(result.missingFields || Object.keys(result.complaint || {}).filter((field) => !result.complaint[field]));
+      setExtractionState('complete');
+      setAssessment(result.riskAssessment || emptyAssessment);
+      setAiMode(result.mode === 'langgraph-groq' ? 'live' : 'demo');
+      setStatus('Ready to Review');
+      setUploadState('success');
+      setMessages((current) => [...current, {
+        role: 'assistant',
+        text: 'Complaint document parsed successfully. I extracted the available complaint details and generated an initial risk assessment.',
+        sourceFile: result.sourceFile || file.name
+      }]);
+    } catch (error) {
+      console.warn('FastAPI file intake unavailable; using local demo fallback.', error);
+      setAiMode('demo');
+      submitMessage(`Extract complaint details from "${file.name}"`, { sourceFile: file.name });
+    }
   };
 
   const handleFile = (event) => {
@@ -146,6 +232,9 @@ function App() {
     setMessage('');
     setSourceFile('');
     setUploadState('idle');
+    setExtractionState('idle');
+    setMissingFields([]);
+    setAssessment(emptyAssessment);
   };
 
   return (
@@ -160,10 +249,11 @@ function App() {
           <span className={`status-pill ${status === 'Ready to Review' ? 'status-ready' : ''}`}><span />{status}</span>
         </header>
 
-        <ComplaintForm sections={complaintSections} complaint={complaint} onChange={updateField} highlightedFields={highlightedFields} />
+        <ComplaintForm sections={complaintSections} complaint={complaint} onChange={updateField} highlightedFields={highlightedFields} missingFields={missingFields} />
+        <AiAssessment assessment={assessment} />
         <div className="form-actions">
-            <button className="button button-secondary" onClick={() => { dispatch(resetComplaint()); setStatus('Pending Triage'); setHighlightedFields([]); }}><RotateCcw size={15} /> Reset Form</button>
-            <button className="button button-primary" onClick={() => setStatus('Saved Locally')}><Check size={15} /> Save Complaint</button>
+            <button className="button button-secondary" onClick={() => { dispatch(resetComplaint()); setStatus('Pending Triage'); setHighlightedFields([]); setMissingFields([]); setExtractionState('idle'); setAssessment(emptyAssessment); }}><RotateCcw size={15} /> Reset Form</button>
+            <button className="button button-primary" onClick={handleSaveComplaint} disabled={isSaving}><Check size={15} /> {isSaving ? 'Saving...' : 'Save Complaint'}</button>
         </div>
       </section>
 
@@ -171,13 +261,13 @@ function App() {
       <aside className="copilot-panel">
         <header className="copilot-header">
           <div className="copilot-title"><span className="copilot-icon"><FlaskConical size={18} /></span><div><h2>AIVOA Copilot <span>BETA</span></h2><p>AI-powered complaint intake assistant</p></div></div>
-          <div className="copilot-header-actions"><span className="online-dot" /><button className="icon-button" onClick={startNewChat} aria-label="Start a new chat"><MessageSquarePlus size={16} /></button><button className="icon-button" onClick={() => setCopilotOpen(false)} aria-label="Collapse AIVOA Copilot"><PanelRightClose size={17} /></button></div>
+            <div className="copilot-header-actions"><span className={`online-dot ${aiMode}`} title={aiMode === 'live' ? 'Live Groq AI connected' : 'Demo mode: local fallback active'} aria-label={aiMode === 'live' ? 'Live Groq AI connected' : 'Demo mode'} /><button className="icon-button" onClick={startNewChat} aria-label="Start a new chat"><MessageSquarePlus size={16} /></button><button className="icon-button" onClick={() => setCopilotOpen(false)} aria-label="Collapse AIVOA Copilot"><PanelRightClose size={17} /></button></div>
         </header>
         <div className="copilot-body">
-          <div className="assistant-message welcome"><div className="message-avatar"><Sparkles size={16} /></div><div><strong>Ready to process a complaint</strong><p>Paste a customer email, type a complaint, or upload a PDF. I’ll extract the data and run an initial risk assessment.</p></div></div>
+          <div className="assistant-message welcome"><div className="message-avatar"><Sparkles size={16} /></div><div><strong>Hello! I’m AIVOA Copilot.</strong><p>Paste a customer email, type a complaint, or upload a PDF. I’ll extract the data, populate the Complaint Log, and run an initial risk assessment.</p></div></div>
           {!isStarted && <div className={`upload-card ${uploadState === 'processing' ? 'upload-processing' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}><UploadCloud size={28} /><strong>Drop complaint document here</strong><span>or <label className="upload-link">click to browse<input type="file" accept=".pdf,.doc,.docx,.txt,.eml" onChange={handleFile} /></label></span><small>Supported: PDF, DOCX, TXT, EML · Max file size: 10MB</small></div>}
           {messages.map((item, index) => <div className={`chat-row ${item.role}`} key={`${item.role}-${index}`}><div className="message-avatar">{item.role === 'assistant' ? <Check size={16} /> : <span>U</span>}</div><div className="chat-bubble"><p>{item.text}</p>{item.sourceFile && <span className="file-reference">Extracted from: &quot;{item.sourceFile}&quot;</span>}</div></div>)}
-          {isStarted && <div className="progress-card"><div><span>{uploadState === 'processing' ? 'Extracting complaint data' : 'Extraction progress'}</span><strong>{uploadState === 'processing' ? '...' : `${completion}%`}</strong></div><div className="progress-track"><span style={{ width: `${uploadState === 'processing' ? 42 : Math.max(completion, 10)}%` }} /></div><p>{sourceFile ? <>Source file: <span className="file-reference">&quot;{sourceFile}&quot;</span></> : 'Complaint data is being mapped to the quality record.'}</p></div>}
+          {isStarted && extractionState !== 'idle' && <div className={`progress-card extraction-${extractionState}`}><div><span>{extractionState === 'processing' ? 'AI extraction in progress' : 'Extraction Completed'}</span><strong>{extractionState === 'processing' ? '...' : '100%'}</strong></div><div className="progress-track"><span style={{ width: `${extractionState === 'processing' ? 72 : 100}%` }} /></div><p>{extractionState === 'processing' ? 'AI is reading the complaint and running extraction passes. Form edits will not affect this progress.' : 'AI extraction finished. The result is preserved while you review or edit the form.'}</p>{missingFields.length > 0 && <p className="review-fields"><strong>Fields requiring manual review:</strong> {missingFields.map((field) => fieldLabels[field] || field).join(' · ')}</p>}{sourceFile && <p>Source file: <span className="file-reference">&quot;{sourceFile}&quot;</span></p>}</div>}
         </div>
         <div className="composer"><div className="composer-input"><button type="button" className="attachment-button" onClick={() => fileInputRef.current?.click()} aria-label="Attach complaint file"><Paperclip size={17} /></button><input ref={fileInputRef} className="visually-hidden-file" type="file" accept=".pdf,.doc,.docx,.txt,.eml" onChange={handleFile} /><input value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submitMessage()} placeholder="Ask anything about this complaint..." /><button onClick={() => submitMessage()} aria-label="Send message"><Send size={16} /></button></div><p><Info size={11} /> AI responses may contain errors. Please verify information.</p></div>
       </aside>
