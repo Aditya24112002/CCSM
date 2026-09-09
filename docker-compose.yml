@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ccms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ccms
+      POSTGRES_USER: ccms
+      POSTGRES_PASSWORD: ccms
+    ports:
+      - "5432:5432"
+    volumes:
+      - ccms-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  ccms-postgres-data:
