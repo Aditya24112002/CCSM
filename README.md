@@ -10,7 +10,7 @@ The current codebase includes the completed UI milestone, a FastAPI intake endpo
 
 ## Core features
 
-- Complaint Log with origin, customer, product, batch, complaint, severity, and priority fields
+- Complaint Log with origin, customer, product, batch, complaint category, and complaint details
 - Data-driven, reusable complaint sections and field components
 - AIVOA Copilot with persistent right-side desktop layout and mobile overlay drawer
 - Copilot collapse/expand state persisted locally
@@ -24,6 +24,7 @@ The current codebase includes the completed UI milestone, a FastAPI intake endpo
 - Form-only reset behavior that preserves conversation history
 - Explicit new-chat confirmation before clearing conversation history
 - FastAPI intake endpoint with optional LangGraph/Groq extraction and local demo fallback
+- Local SQLite persistence with duplicate-save protection and a Saved Complaints viewer
 
 ## Architecture
 
@@ -39,7 +40,10 @@ src/
 backend/
   app/main.py                 FastAPI application and routes
   app/schemas.py              API request/response models
-  app/services/               Extraction service boundary, demo, and LangGraph implementations
+  app/services/               Extraction service boundary, demo, date, document, and LangGraph implementations
+  app/database.py             SQLAlchemy engine and local schema setup
+  app/models.py               Portable complaint persistence model
+  tests/                      Extraction regression tests
   requirements.txt            Backend dependencies
   .env.example                Backend configuration template
 ```
@@ -130,12 +134,12 @@ The frontend calls FastAPI when available and falls back to the local demo extra
 Copy-Item backend\.env.example backend\.env
 ```
 
-For real Groq/LangGraph processing, set:
+For local development with SQLite and real Groq/LangGraph processing, set:
 
 ```env
 GROQ_API_KEY=your_groq_key
 GROQ_MODEL=openai/gpt-oss-20b
-DATABASE_URL=postgresql+psycopg://ccms:ccms@localhost:5432/ccms
+DATABASE_URL=sqlite:///./backend/ccms.sqlite3
 CORS_ORIGINS=http://localhost:5173
 ```
 
@@ -147,7 +151,13 @@ Never place API keys in frontend files or commit `.env` files.
 docker compose up -d postgres
 ```
 
-The database configuration is local-first and can later be replaced with a managed PostgreSQL service.
+The SQLAlchemy persistence model is PostgreSQL-ready. After PostgreSQL is running, replace `DATABASE_URL` in `backend\.env` with:
+
+```env
+DATABASE_URL=postgresql+psycopg://ccms:ccms@localhost:5432/ccms
+```
+
+Restart FastAPI and it will create the same `complaint_records` table in PostgreSQL. SQLite remains the default local database so PostgreSQL is not required for frontend development.
 
 ## Build and verification
 
@@ -174,7 +184,7 @@ Completed:
 Next:
 
 - Add document parsing service
-- Persist complaints in PostgreSQL
+- Migrate local SQLite records to PostgreSQL when hosting begins
 - Add complaint history and audit events
 - Add authentication and role-based access
 - Add reporting, duplicate detection, CAPA suggestions, and completeness checks

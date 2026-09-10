@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Check,
+  Database,
   FlaskConical,
   Info,
   MessageSquarePlus,
@@ -16,8 +17,9 @@ import {
 import { resetComplaint, updateComplaint } from './store';
 import ComplaintForm from './components/complaint/ComplaintForm';
 import AiAssessment from './components/complaint/AiAssessment';
+import SavedComplaintsViewer from './components/complaint/SavedComplaintsViewer';
 import { complaintSections } from './features/complaint/complaintConfig';
-import { getApiHealth, intakeComplaint, intakeComplaintFile, saveComplaint } from './services/complaintApi';
+import { deleteComplaint, getApiHealth, intakeComplaint, intakeComplaintFile, listComplaints, saveComplaint } from './services/complaintApi';
 
 const sampleComplaint = {
   source: 'Pharmacy',
@@ -66,6 +68,7 @@ function App() {
   const [status, setStatus] = useState('Pending Triage');
   const [copilotOpen, setCopilotOpen] = useState(() => window.localStorage.getItem('aivoa-copilot-open') !== 'false');
   const [highlightedFields, setHighlightedFields] = useState([]);
+  const [extractedFields, setExtractedFields] = useState([]);
   const [sourceFile, setSourceFile] = useState('');
   const [uploadState, setUploadState] = useState('idle');
   const [missingFields, setMissingFields] = useState([]);
@@ -73,6 +76,9 @@ function App() {
   const [extractionState, setExtractionState] = useState('idle');
   const [assessment, setAssessment] = useState(emptyAssessment);
   const [isSaving, setIsSaving] = useState(false);
+  const [savedRecords, setSavedRecords] = useState([]);
+  const [savedViewerOpen, setSavedViewerOpen] = useState(false);
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const fileInputRef = React.useRef(null);
   const isStarted = Boolean(messages.length);
 
@@ -97,19 +103,56 @@ function App() {
     }
     setIsSaving(true);
     try {
-      await saveComplaint({
+      const savedRecord = await saveComplaint({
         complaint,
         riskAssessment: assessment,
         originalText: messages.filter((item) => item.role === 'user').map((item) => item.text).join('\n\n'),
         sourceFile,
-        mode: aiMode === 'live' ? 'langgraph-groq' : 'demo'
+        mode: aiMode === 'live' ? 'langgraph-groq' : 'demo',
+        changedFields: extractedFields,
+        missingFields
       });
-      setStatus('Saved to Local QMS');
+      setStatus(savedRecord.duplicate ? 'Already Saved' : 'Saved to Local QMS');
     } catch (error) {
       console.warn('Complaint save failed.', error);
       setStatus('Save Failed');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const openSavedViewer = async () => {
+    setSavedViewerOpen(true);
+    setIsLoadingSaved(true);
+    try {
+      setSavedRecords(await listComplaints());
+    } catch (error) {
+      console.warn('Saved complaint records could not be loaded.', error);
+      setSavedRecords([]);
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  };
+
+  const openSavedRecord = (record) => {
+    dispatch(updateComplaint(record.complaint));
+    setAssessment(record.riskAssessment);
+    setMissingFields(record.missingFields || []);
+    setExtractedFields(record.changedFields || []);
+    setHighlightedFields(record.changedFields || []);
+    setExtractionState('complete');
+    setStatus('Saved Record Loaded');
+    setSavedViewerOpen(false);
+  };
+
+  const deleteSavedRecord = async (record) => {
+    if (!window.confirm(`Delete complaint record #${record.id}? This cannot be undone.`)) return;
+    try {
+      await deleteComplaint(record.id);
+      setSavedRecords((currentRecords) => currentRecords.filter((item) => item.id !== record.id));
+    } catch (error) {
+      console.warn('Saved complaint could not be deleted.', error);
+      window.alert('The complaint could not be deleted. Please try again.');
     }
   };
 
@@ -139,6 +182,7 @@ function App() {
         : Object.keys(extractedComplaint).filter((field) => extractedComplaint[field]);
       dispatch(updateComplaint(extractedComplaint));
       markAiFields(changedFields);
+      setExtractedFields(changedFields);
       setMissingFields(result.missingFields || Object.keys(extractedComplaint).filter((field) => !extractedComplaint[field]));
       setExtractionState('complete');
       setAssessment(result.riskAssessment || emptyAssessment);
@@ -170,11 +214,13 @@ function App() {
         if (Object.keys(patch).length) {
           dispatch(updateComplaint(patch));
           markAiFields(Object.keys(patch));
+          setExtractedFields(Object.keys(patch));
         }
         setMissingFields(Object.keys(complaint).filter((field) => !complaint[field] && !patch[field]));
       } else {
         dispatch(updateComplaint(sampleComplaint));
         markAiFields(Object.keys(sampleComplaint));
+        setExtractedFields(Object.keys(sampleComplaint));
         setMissingFields(Object.keys(sampleComplaint).filter((field) => !sampleComplaint[field]));
       }
       setAssessment(getFallbackAssessment(trimmed));
@@ -198,6 +244,7 @@ function App() {
       const result = await intakeComplaintFile(file, complaint);
       dispatch(updateComplaint(result.complaint || {}));
       markAiFields(result.changedFields || Object.keys(result.complaint || {}));
+      setExtractedFields(result.changedFields || Object.keys(result.complaint || {}));
       setMissingFields(result.missingFields || Object.keys(result.complaint || {}).filter((field) => !result.complaint[field]));
       setExtractionState('complete');
       setAssessment(result.riskAssessment || emptyAssessment);
@@ -234,6 +281,7 @@ function App() {
     setUploadState('idle');
     setExtractionState('idle');
     setMissingFields([]);
+    setExtractedFields([]);
     setAssessment(emptyAssessment);
   };
 
@@ -246,15 +294,17 @@ function App() {
             <h1>Log Customer Complaint</h1>
             <p className="subtitle">API &amp; FDF Quality Assurance Module</p>
           </div>
-          <span className={`status-pill ${status === 'Ready to Review' ? 'status-ready' : ''}`}><span />{status}</span>
+          <div className="page-header-actions"><button className="button button-secondary" onClick={openSavedViewer}><Database size={15} /> Saved Complaints</button><span className={`status-pill ${status === 'Ready to Review' ? 'status-ready' : ''}`}><span />{status}</span></div>
         </header>
 
-        <ComplaintForm sections={complaintSections} complaint={complaint} onChange={updateField} highlightedFields={highlightedFields} missingFields={missingFields} />
-        <AiAssessment assessment={assessment} />
-        <div className="form-actions">
-            <button className="button button-secondary" onClick={() => { dispatch(resetComplaint()); setStatus('Pending Triage'); setHighlightedFields([]); setMissingFields([]); setExtractionState('idle'); setAssessment(emptyAssessment); }}><RotateCcw size={15} /> Reset Form</button>
+        {savedViewerOpen ? <SavedComplaintsViewer records={savedRecords} isLoading={isLoadingSaved} onBack={() => setSavedViewerOpen(false)} onOpen={openSavedRecord} onDelete={deleteSavedRecord} /> : <>
+          <ComplaintForm sections={complaintSections} complaint={complaint} onChange={updateField} highlightedFields={highlightedFields} missingFields={missingFields} />
+          <AiAssessment assessment={assessment} />
+          <div className="form-actions">
+            <button className="button button-secondary" onClick={() => { dispatch(resetComplaint()); setStatus('Pending Triage'); setHighlightedFields([]); setMissingFields([]); setExtractedFields([]); setExtractionState('idle'); setAssessment(emptyAssessment); }}><RotateCcw size={15} /> Reset Form</button>
             <button className="button button-primary" onClick={handleSaveComplaint} disabled={isSaving}><Check size={15} /> {isSaving ? 'Saving...' : 'Save Complaint'}</button>
-        </div>
+          </div>
+        </>}
       </section>
 
       {!copilotOpen && <button className="copilot-fab" onClick={() => setCopilotOpen(true)} aria-label="Open AIVOA Copilot"><PanelRightOpen size={18} /><span>Copilot</span></button>}

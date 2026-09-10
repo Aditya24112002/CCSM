@@ -42,8 +42,11 @@ class SaveComplaintRequest(BaseModel):
     originalText: str = ""
     sourceFile: str = ""
     mode: str = "demo"
+    changedFields: list[str] = Field(default_factory=list)
+    missingFields: list[str] = Field(default_factory=list)
 
 
 class ComplaintRecordResponse(SaveComplaintRequest):
     id: int
     createdAt: str
+    duplicate: bool = False

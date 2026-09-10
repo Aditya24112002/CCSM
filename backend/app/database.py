@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import get_settings
@@ -21,3 +21,13 @@ def create_tables() -> None:
     from .models import ComplaintRecord
 
     Base.metadata.create_all(bind=engine)
+    existing_columns = {column["name"] for column in inspect(engine).get_columns("complaint_records")}
+    migrations = {
+        "changed_fields_json": "ALTER TABLE complaint_records ADD COLUMN changed_fields_json TEXT NOT NULL DEFAULT '[]'",
+        "missing_fields_json": "ALTER TABLE complaint_records ADD COLUMN missing_fields_json TEXT NOT NULL DEFAULT '[]'",
+        "record_fingerprint": "ALTER TABLE complaint_records ADD COLUMN record_fingerprint VARCHAR(64)",
+    }
+    with engine.begin() as connection:
+        for column, statement in migrations.items():
+            if column not in existing_columns:
+                connection.execute(text(statement))

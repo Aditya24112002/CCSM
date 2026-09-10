@@ -50,3 +50,21 @@ export async function saveComplaint(payload) {
 
   return response.json();
 }
+
+export async function listComplaints() {
+  const response = await fetch(`${API_BASE_URL}/api/complaints`);
+  if (!response.ok) throw new Error(`Complaint list failed with status ${response.status}`);
+  return response.json();
+}
+
+export async function deleteComplaint(id) {
+  const response = await fetch(`${API_BASE_URL}/api/complaints/${id}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Complaint deletion failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
