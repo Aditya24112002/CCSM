@@ -1,0 +1,7 @@
+node_modules
+dist
+backend/.venv
+backend/ccms.sqlite3
+*.min.js
+backend/.env.example
+setup.ps1

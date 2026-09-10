@@ -5,9 +5,11 @@ export function isValidDisplayDate(value) {
   if (!match) return false;
   const [, day, month, year] = match;
   const date = new Date(Number(year), Number(month) - 1, Number(day));
-  return date.getFullYear() === Number(year)
-    && date.getMonth() === Number(month) - 1
-    && date.getDate() === Number(day);
+  return (
+    date.getFullYear() === Number(year) &&
+    date.getMonth() === Number(month) - 1 &&
+    date.getDate() === Number(day)
+  );
 }
 
 export function normalizeDate(value) {

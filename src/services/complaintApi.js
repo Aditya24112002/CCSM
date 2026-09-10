@@ -10,7 +10,7 @@ export async function intakeComplaint(payload) {
   const response = await fetch(`${API_BASE_URL}/api/complaints/intake`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -27,7 +27,7 @@ export async function intakeComplaintFile(file, existingComplaint) {
 
   const response = await fetch(`${API_BASE_URL}/api/complaints/intake-file`, {
     method: 'POST',
-    body: formData
+    body: formData,
   });
 
   if (!response.ok) {
@@ -41,7 +41,7 @@ export async function saveComplaint(payload) {
   const response = await fetch(`${API_BASE_URL}/api/complaints`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -59,7 +59,7 @@ export async function listComplaints() {
 
 export async function deleteComplaint(id) {
   const response = await fetch(`${API_BASE_URL}/api/complaints/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
   });
 
   if (!response.ok) {

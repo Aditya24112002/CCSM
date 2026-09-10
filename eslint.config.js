@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'backend/**']
+    ignores: ['dist/**', 'node_modules/**', 'backend/**'],
   },
   eslint.configs.recommended,
   {
@@ -17,24 +17,24 @@ export default [
         console: 'readonly',
         fetch: 'readonly',
         FormData: 'readonly',
-        setTimeout: 'readonly'
+        setTimeout: 'readonly',
       },
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        ecmaFeatures: { jsx: true }
-      }
+        ecmaFeatures: { jsx: true },
+      },
     },
     plugins: {
       'react-hooks': reactHooks,
       react,
-      'react-refresh': reactRefresh
+      'react-refresh': reactRefresh,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react/jsx-uses-react': 'error',
       'react/jsx-uses-vars': 'error',
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]
-    }
-  }
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
 ];

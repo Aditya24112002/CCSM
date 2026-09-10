@@ -1,7 +1,13 @@
 import React from 'react';
 import ComplaintSection from './ComplaintSection';
 
-function ComplaintForm({ sections, complaint, onChange, highlightedFields = [], missingFields = [] }) {
+function ComplaintForm({
+  sections,
+  complaint,
+  onChange,
+  highlightedFields = [],
+  missingFields = [],
+}) {
   return (
     <div className="form-content">
       {sections.map((section) => (

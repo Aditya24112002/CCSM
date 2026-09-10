@@ -11,10 +11,10 @@ function ComplaintSection({ title, fields, values, onChange, highlightedFields, 
             key={field.name}
             definition={field}
             value={values[field.name]}
-          onChange={(value) => onChange(field.name, value)}
-          isHighlighted={highlightedFields.includes(field.name)}
-          isMissing={missingFields.includes(field.name)}
-          readOnly={field.readOnly}
+            onChange={(value) => onChange(field.name, value)}
+            isHighlighted={highlightedFields.includes(field.name)}
+            isMissing={missingFields.includes(field.name)}
+            readOnly={field.readOnly}
           />
         ))}
       </div>

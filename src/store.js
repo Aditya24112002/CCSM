@@ -19,8 +19,8 @@ const complaintSlice = createSlice({
   initialState: initialComplaint,
   reducers: {
     updateComplaint: (state, action) => ({ ...state, ...action.payload }),
-    resetComplaint: () => initialComplaint
-  }
+    resetComplaint: () => initialComplaint,
+  },
 });
 
 export const { updateComplaint, resetComplaint } = complaintSlice.actions;
