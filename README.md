@@ -199,4 +199,4 @@ Next:
 
 ## License
 
-This project is currently an assignment/demo repository. Add a formal license before public redistribution.
+This project is currently an assignment/demo repository.
