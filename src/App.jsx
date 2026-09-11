@@ -83,6 +83,14 @@ function getStatusClass(status) {
   return 'status-pending';
 }
 
+function getExtractionPhase(progress) {
+  if (progress < 20) return 'Preparing the complaint for analysis...';
+  if (progress < 40) return 'Reading the complaint content...';
+  if (progress < 65) return 'Extracting complaint fields...';
+  if (progress < 85) return 'Assessing initial risk...';
+  return 'Validating the extracted result...';
+}
+
 function App() {
   const dispatch = useDispatch();
   const complaint = useSelector((state) => state.complaint);
@@ -99,6 +107,7 @@ function App() {
   const [missingFields, setMissingFields] = useState([]);
   const [aiMode, setAiMode] = useState('demo');
   const [extractionState, setExtractionState] = useState('idle');
+  const [extractionProgress, setExtractionProgress] = useState(0);
   const [assessment, setAssessment] = useState(emptyAssessment);
   const [isSaving, setIsSaving] = useState(false);
   const [savedRecords, setSavedRecords] = useState([]);
@@ -106,7 +115,44 @@ function App() {
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [theme, setTheme] = useState(() => window.localStorage.getItem('aivoa-theme') || 'light');
   const fileInputRef = React.useRef(null);
+  const copilotBodyRef = React.useRef(null);
   const isStarted = Boolean(messages.length);
+
+  useEffect(() => {
+    if (extractionState === 'idle') {
+      setExtractionProgress(0);
+      return undefined;
+    }
+
+    if (extractionState === 'complete') {
+      setExtractionProgress(100);
+      return undefined;
+    }
+
+    setExtractionProgress(8);
+    const progressTimer = window.setInterval(() => {
+      setExtractionProgress((currentProgress) => {
+        if (currentProgress >= 92) return currentProgress;
+        const increment = currentProgress < 40 ? 7 : currentProgress < 75 ? 4 : 2;
+        return Math.min(92, currentProgress + increment);
+      });
+    }, 650);
+
+    return () => window.clearInterval(progressTimer);
+  }, [extractionState]);
+
+  useEffect(() => {
+    if (extractionState === 'idle') return undefined;
+
+    const scrollFrame = window.requestAnimationFrame(() => {
+      copilotBodyRef.current?.scrollTo({
+        top: copilotBodyRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(scrollFrame);
+  }, [messages.length, extractionState]);
 
   useEffect(() => {
     window.localStorage.setItem('aivoa-copilot-open', String(copilotOpen));
@@ -477,7 +523,7 @@ function App() {
             </button>
           </div>
         </header>
-        <div className="copilot-body">
+        <div className="copilot-body" ref={copilotBodyRef}>
           <div className="assistant-message welcome">
             <div className="message-avatar">
               <Sparkles size={16} />
@@ -523,7 +569,7 @@ function App() {
               </div>
             </div>
           ))}
-          {isStarted && extractionState !== 'idle' && (
+          {extractionState !== 'idle' && (
             <div className={`progress-card extraction-${extractionState}`}>
               <div>
                 <span>
@@ -531,14 +577,20 @@ function App() {
                     ? 'AI extraction in progress'
                     : 'Extraction Completed'}
                 </span>
-                <strong>{extractionState === 'processing' ? '...' : '100%'}</strong>
+                <strong>
+                  {extractionState === 'processing' ? `${extractionProgress}%` : '100%'}
+                </strong>
               </div>
               <div className="progress-track">
-                <span style={{ width: `${extractionState === 'processing' ? 72 : 100}%` }} />
+                <span
+                  style={{
+                    width: `${extractionState === 'processing' ? extractionProgress : 100}%`,
+                  }}
+                />
               </div>
               <p>
                 {extractionState === 'processing'
-                  ? 'AI is reading the complaint and running extraction passes. Form edits will not affect this progress.'
+                  ? `${getExtractionPhase(extractionProgress)} Form edits will not affect this progress.`
                   : 'AI extraction finished. The result is preserved while you review or edit the form.'}
               </p>
               {missingFields.length > 0 && (

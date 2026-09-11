@@ -54,6 +54,10 @@ def extract_demo(request: IntakeRequest) -> IntakeResponse:
         setattr(complaint, field, value)
         if field not in changed_fields:
             changed_fields.append(field)
+    for field, value in extract_document_patch(message).items():
+        setattr(complaint, field, value)
+        if field not in changed_fields:
+            changed_fields.append(field)
     for field, value in identity_patch.items():
         setattr(complaint, field, value)
         if field not in changed_fields:
@@ -153,6 +157,81 @@ def _extract_initial_complaint(message: str, existing: ComplaintData) -> Complai
             "The observation represents a potential product quality concern requiring investigation."
         )
     return complaint
+
+
+def extract_document_patch(message: str) -> dict[str, str]:
+    """Extract explicit label-style facts commonly found in complaint letters and PDFs."""
+    text = re.sub(r"\s+", " ", message).strip()
+    patch: dict[str, str] = {}
+
+    customer = re.search(r"\bCustomer\s*:\s*([^.;]+)", text, re.I)
+    if not customer:
+        customer = re.search(r"\bsupplied\s+to\s+([^.,]+)", text, re.I)
+    if not customer:
+        customer = re.search(r"\bSincerely,?\s+([^.,]+)", text, re.I)
+    if customer:
+        patch["customerName"] = customer.group(1).strip()
+
+    product = re.search(
+        r"\b(?:Product\s*:\s*|consignment\s+of\s+)(.+?)(?=,\s*(?:Grade|Strength(?:/Grade)?|Batch/Lot)|\s+with\s+a\s+manufacturing\s+date)",
+        text,
+        re.I,
+    )
+    if product:
+        patch["productName"] = product.group(1).strip()
+
+    grade = re.search(r"\b(?:Strength\s*/\s*Grade|Grade|Strength)\s*[:\-]?\s*([A-Za-z0-9./-]+)", text, re.I)
+    if grade:
+        patch["strength"] = grade.group(1).strip()
+
+    batch = re.search(r"\bBatch\s*(?:/\s*Lot)?\s*(?:Number|No\.?)?\s*[:\-]?\s*([A-Za-z0-9_-]+)", text, re.I)
+    if batch:
+        patch["batchNumber"] = batch.group(1).strip()
+
+    manufacturing = re.search(
+        r"\bmanufacturing\s+date\s+(?:of|is|was|on|:)\s*([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
+        text,
+        re.I,
+    )
+    if manufacturing:
+        patch["manufacturingDate"] = _format_date(manufacturing.group(1))
+
+    expiry = re.search(
+        r"\bexpiry\s+date\s+(?:of|is|was|on|:)\s*([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
+        text,
+        re.I,
+    )
+    if expiry:
+        patch["expiryDate"] = _format_date(expiry.group(1))
+
+    quantity = re.search(
+        r"\baffected\s+quantity\s+(?:consists\s+of|is|:)?\s*([^.;]+)",
+        text,
+        re.I,
+    )
+    if quantity:
+        patch["quantity"] = quantity.group(1).strip()
+
+    complaint_date = re.search(
+        r"\b(?:complaint\s+date|submitted)\s+(?:on|is|was|:)\s*([0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
+        text,
+        re.I,
+    )
+    if complaint_date:
+        patch["complaintDate"] = _format_date(complaint_date.group(1))
+
+    source = re.search(r"\b(?:complaint\s+source|source)\s*:\s*([^.;]+)", text, re.I)
+    if not source:
+        source = re.search(r"\b(?:complained|submitted|reported)\s+(?:via|through|by)\s+(email|phone|portal|website|mail)\b", text, re.I)
+    if source:
+        patch["source"] = source.group(1).strip().title()
+    elif re.search(r"\bDear\s+.+\bSincerely,", text, re.I):
+        patch["source"] = "Formal Complaint Letter"
+
+    if re.search(r"\b(?:unexpected\s+grey|discolou?red|non-uniform\s+particle|wrong\s+color)", text, re.I):
+        patch["complaintCategory"] = "Product Quality Issue"
+
+    return {field: value for field, value in patch.items() if value}
 
 
 def _infer_category(message: str) -> str:

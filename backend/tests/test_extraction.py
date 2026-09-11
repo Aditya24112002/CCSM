@@ -49,6 +49,23 @@ class ComplaintExtractionTests(unittest.TestCase):
         self.assertEqual(result.riskAssessment.severity, "Minor")
         self.assertIn("additional complaint details", result.riskAssessment.suggestedNextAction)
 
+    def test_formal_complaint_document_extracts_grade_and_source(self):
+        message = (
+            "Dear Quality Assurance Team, we formally raise a quality complaint regarding a recent "
+            "consignment of Metformin Hydrochloride API, Grade IP/BP, supplied to Nova Pharma Manufacturing. "
+            "The material relates to Batch/Lot Number MFH260712A, with a manufacturing date of 12 July 2026 "
+            "and an expiry date of 11 July 2028. The affected quantity consists of 50 kg of material packed in "
+            "2 HDPE drums. This complaint is being submitted on 15 July 2026. Sincerely, Nova Pharma Manufacturing"
+        )
+        result = extract_demo(IntakeRequest(message=message))
+        self.assertEqual(result.complaint.customerName, "Nova Pharma Manufacturing")
+        self.assertEqual(result.complaint.productName, "Metformin Hydrochloride API")
+        self.assertEqual(result.complaint.strength, "IP/BP")
+        self.assertEqual(result.complaint.batchNumber, "MFH260712A")
+        self.assertEqual(result.complaint.source, "Formal Complaint Letter")
+        self.assertEqual(result.complaint.manufacturingDate, "12/07/2026")
+        self.assertEqual(result.complaint.expiryDate, "11/07/2028")
+
     def test_correction_updates_only_the_requested_expiry(self):
         existing = ComplaintData(
             customerName="Aditya Bhadra",

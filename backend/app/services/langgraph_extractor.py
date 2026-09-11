@@ -9,7 +9,13 @@ from pydantic import BaseModel, Field
 from ..config import get_settings
 from ..schemas import ComplaintData, IntakeRequest, IntakeResponse, RiskAssessment
 from .date_resolution import extract_relative_date_patch, format_local_today
-from .demo_extractor import REQUIRED_FIELDS, extract_correction_patch, extract_identity_patch, has_explicit_complaint_date
+from .demo_extractor import (
+    REQUIRED_FIELDS,
+    extract_correction_patch,
+    extract_document_patch,
+    extract_identity_patch,
+    has_explicit_complaint_date,
+)
 from .extraction_examples import EXTRACTION_EXAMPLES
 
 
@@ -103,6 +109,7 @@ def _finalize_node(state: ComplaintState) -> ComplaintState:
     merged = existing.model_copy(update=extracted)
     merged = merged.model_copy(update=extract_correction_patch(request.message))
     merged = merged.model_copy(update=extract_relative_date_patch(request.message))
+    merged = merged.model_copy(update=extract_document_patch(request.message))
     merged = merged.model_copy(update=extract_identity_patch(request.message))
     if not existing.complaintDate and not has_explicit_complaint_date(request.message):
         merged.complaintDate = format_local_today()
